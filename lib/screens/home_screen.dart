@@ -14,18 +14,11 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(
-              Icons.home,
-              size: 80,
-              color: Colors.deepPurple,
-            ),
+            Icon(Icons.home, size: 80, color: Colors.deepPurple),
             SizedBox(height: 20),
             Text(
               'ホーム画面',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -33,4 +26,3 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-

@@ -110,5 +110,11 @@ class _QuestScreenState extends State<QuestScreen> {
     // 本数と金額を別々のキーで保存
     await prefs.setInt('weeklyCigarettes', cigarettes);
     await prefs.setInt('cigarettePrice', price);
+    
+    // 入力完了時のタイムスタンプを保存（1週間後の結果表示に使用）
+    await prefs.setInt(
+      'questCompletedTimestamp',
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 }

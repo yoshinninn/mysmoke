@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'results_screen.dart';//結果画面への遷移
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -9,6 +10,17 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('ホーム'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        leading: IconButton(//結果画面への遷移
+          icon: const Icon(Icons.assessment),
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const ResultsScreen(),
+              ),
+            );
+          },
+          tooltip: '結果画面',
+        ),//結果画面への遷移
       ),
       body: const Center(
         child: Column(

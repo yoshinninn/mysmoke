@@ -101,7 +101,9 @@ class _AppInitializerState extends State<AppInitializer> {
       // QuestScreen入力から1週間（7日）経過している場合
       if (difference.inDays >= 7) {
         // まだResultsScreenを表示していない、または最後の表示から時間が経っている場合
-        final lastResultsShownTimestamp = prefs.getInt('lastResultsScreenShown');
+        final lastResultsShownTimestamp = prefs.getInt(
+          'lastResultsScreenShown',
+        );
         if (lastResultsShownTimestamp == null) {
           // まだ一度も表示していない場合
           shouldShowResults = true;

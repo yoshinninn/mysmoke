@@ -19,24 +19,28 @@ class ResultsScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError || !snapshot.hasData) {
-            return const Center(
-              child: Text('データの読み込みに失敗しました'),
-            );
+            return const Center(child: Text('データの読み込みに失敗しました'));
           }
 
           final data = snapshot.data!;
           final weeklyCigarettes = data['weeklyCigarettes'] ?? 0;
           final cigarettePrice = data['cigarettePrice'] ?? 0;
           final questCompletedTimestamp = data['questCompletedTimestamp'];
-          final totalCost = weeklyCigarettes * cigarettePrice;
-          
+          final weeklySmokedCount = data['weeklySmokedCount'] ?? 0;
+          // 予定総額 = 一箱の値段 ÷ 20 × 予定本数
+          final totalCost = ((cigarettePrice / 20) * weeklyCigarettes).round();
+          final totalSmokedCost = ((cigarettePrice / 20) * weeklySmokedCount)
+              .round();
+          // 予定本数を超えているかどうかを判定
+          final isOverLimit = weeklySmokedCount > weeklyCigarettes;
           // 入力日時のフォーマット
           String inputDateText = '不明';
           if (questCompletedTimestamp != null) {
             final inputDate = DateTime.fromMillisecondsSinceEpoch(
               questCompletedTimestamp,
             );
-            inputDateText = '${inputDate.year}年${inputDate.month}月${inputDate.day}日';
+            inputDateText =
+                '${inputDate.year}年${inputDate.month}月${inputDate.day}日';
           }
 
           return SingleChildScrollView(
@@ -54,18 +58,12 @@ class ResultsScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   const Text(
                     '1週間の結果',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     '入力日: $inputDateText',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 40),
                   Card(
@@ -92,8 +90,24 @@ class ResultsScreen extends StatelessWidget {
                             '予定総額',
                             _formatCurrency(totalCost),
                             Icons.account_balance_wallet,
-                            isHighlight: true,
                             description: '1週間の予定支出額',
+                          ),
+                          const Divider(),
+                          _buildResultRow(
+                            '今週吸った本数',
+                            '$weeklySmokedCount 本',
+                            Icons.check_circle,
+                            description: '実際に吸った本数',
+                            isHighlight: true,
+                            isWarning: isOverLimit,
+                          ),
+                          const Divider(),
+                          _buildResultRow(
+                            '今週の総額',
+                            _formatCurrency(totalSmokedCost),
+                            Icons.account_balance_wallet,
+                            description: '1週間の総額',
+                            isWarning: isOverLimit,
                           ),
                         ],
                       ),
@@ -127,6 +141,7 @@ class ResultsScreen extends StatelessWidget {
     String value,
     IconData icon, {
     bool isHighlight = false,
+    bool isWarning = false,
     String? description,
   }) {
     return Padding(
@@ -141,7 +156,9 @@ class ResultsScreen extends StatelessWidget {
                 children: [
                   Icon(
                     icon,
-                    color: isHighlight ? Colors.deepPurple : Colors.grey,
+                    color: isWarning
+                        ? Colors.red
+                        : (isHighlight ? Colors.deepPurple : Colors.grey),
                   ),
                   const SizedBox(width: 12),
                   Column(
@@ -151,9 +168,10 @@ class ResultsScreen extends StatelessWidget {
                         label,
                         style: TextStyle(
                           fontSize: 18,
-                          fontWeight: isHighlight
+                          fontWeight: isHighlight || isWarning
                               ? FontWeight.bold
                               : FontWeight.normal,
+                          color: isWarning ? Colors.red : null,
                         ),
                       ),
                       if (description != null) ...[
@@ -173,9 +191,13 @@ class ResultsScreen extends StatelessWidget {
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: isHighlight ? 22 : 18,
-                  fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
-                  color: isHighlight ? Colors.deepPurple : Colors.black87,
+                  fontSize: isHighlight || isWarning ? 22 : 18,
+                  fontWeight: isHighlight || isWarning
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                  color: isWarning
+                      ? Colors.red
+                      : (isHighlight ? Colors.deepPurple : Colors.black87),
                 ),
               ),
             ],
@@ -201,10 +223,39 @@ class ResultsScreen extends StatelessWidget {
 
   Future<Map<String, dynamic>> _loadResultsData() async {
     final prefs = await SharedPreferences.getInstance();
+    final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
+
+    // 週ごとの実際に吸った本数を計算
+    int weeklySmokedCount = 0;
+    if (questCompletedTimestamp != null) {
+      final questDate = DateTime.fromMillisecondsSinceEpoch(
+        questCompletedTimestamp,
+      );
+      final today = DateTime.now();
+      final weekStart = DateTime(
+        questDate.year,
+        questDate.month,
+        questDate.day,
+      );
+      final todayStart = DateTime(today.year, today.month, today.day);
+
+      // 週の範囲内（7日間）の日ごとの本数を合計
+      final daysDifference = todayStart.difference(weekStart).inDays;
+      if (daysDifference >= 0 && daysDifference < 7) {
+        for (int i = 0; i <= daysDifference; i++) {
+          final date = weekStart.add(Duration(days: i));
+          final dateKey = 'dailyCount_${date.year}_${date.month}_${date.day}';
+          final dayCount = prefs.getInt(dateKey) ?? 0;
+          weeklySmokedCount += dayCount;
+        }
+      }
+    }
+
     return {
       'weeklyCigarettes': prefs.getInt('weeklyCigarettes') ?? 0,
       'cigarettePrice': prefs.getInt('cigarettePrice') ?? 0,
-      'questCompletedTimestamp': prefs.getInt('questCompletedTimestamp'),
+      'questCompletedTimestamp': questCompletedTimestamp,
+      'weeklySmokedCount': weeklySmokedCount,
     };
   }
 }

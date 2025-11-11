@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'results_screen.dart'; //結果画面への遷移
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -8,17 +10,76 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _count = 4; // 現在の本数
+  int _count = 0; // 現在の本数
   final int _goal = 6;
+  bool _isLoading = true;
 
-  void _increment() {
+  @override
+  void initState() {
+    super.initState();
+    _loadCount();
+  }
+
+  Future<void> _loadCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final todayKey = 'dailyCount_${today.year}_${today.month}_${today.day}';
+
+    // questCompletedTimestampを基準に週をチェック
+    final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
+    int count = 0;
+
+    if (questCompletedTimestamp != null) {
+      final questDate = DateTime.fromMillisecondsSinceEpoch(
+        questCompletedTimestamp,
+      );
+      final weekStart = DateTime(
+        questDate.year,
+        questDate.month,
+        questDate.day,
+      );
+      final todayStart = DateTime(today.year, today.month, today.day);
+
+      // 週の範囲内（7日以内）かチェック
+      final daysDifference = todayStart.difference(weekStart).inDays;
+      if (daysDifference >= 0 && daysDifference < 7) {
+        // 同じ週内であれば、保存された値を読み込む
+        count = prefs.getInt(todayKey) ?? 0;
+      } else {
+        // 週が変わった場合（7日以上経過）、0にリセット
+        count = 0;
+        await prefs.setInt(todayKey, 0);
+      }
+    } else {
+      // questCompletedTimestampがない場合、保存された値を読み込む
+      count = prefs.getInt(todayKey) ?? 0;
+    }
+
     setState(() {
-      _count += 1;
+      _count = count;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _increment() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final todayKey = 'dailyCount_${today.year}_${today.month}_${today.day}';
+
+    final newCount = _count + 1;
+    await prefs.setInt(todayKey, newCount);
+
+    setState(() {
+      _count = newCount;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     final remaining = (_goal - _count) > 0 ? (_goal - _count) : 0;
     return Scaffold(
       appBar: AppBar(
@@ -26,7 +87,18 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text('ホーム', style: TextStyle(color: Colors.black)),
+        leading: IconButton(
+          //結果画面への遷移
+          icon: const Icon(Icons.assessment),
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const ResultsScreen()),
+            );
+          },
+          tooltip: '結果画面',
+        ), //結果画面への遷移
       ),
+
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -36,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 // １日の本数表示
                 Text(
-                  '一日の喫煙本数： $_count 本',
+                  '一週間の喫煙本数： $_count 本',
                   textAlign: TextAlign.left,
                   style: const TextStyle(fontSize: 18),
                 ),

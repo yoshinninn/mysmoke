@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'quest_screen.dart';
 
 class ResultsScreen extends StatelessWidget {
   const ResultsScreen({super.key});
@@ -82,7 +83,7 @@ class ResultsScreen extends StatelessWidget {
                           _buildResultRow(
                             '一箱の値段',
                             _formatCurrency(cigarettePrice),
-                            Icons.attach_money,
+                            Icons.currency_yen,
                             description: 'タバコ1箱の価格',
                           ),
                           const Divider(),
@@ -125,6 +126,43 @@ class ResultsScreen extends StatelessWidget {
                       ),
                     ),
                     child: const Text('閉じる'),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      final weeklyCigarettes = prefs.getInt('weeklyCigarettes');
+                      final cigarettePrice = prefs.getInt('cigarettePrice');
+
+                      if (weeklyCigarettes != null && cigarettePrice != null) {
+                        Navigator.of(context)
+                            .push(
+                              MaterialPageRoute(
+                                builder: (context) => QuestScreen(
+                                  initialCigarettes: weeklyCigarettes,
+                                  initialPrice: cigarettePrice,
+                                ),
+                              ),
+                            )
+                            .then((_) {
+                              Navigator.of(context).pop();
+                            });
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('先週の目標データが見つかりません')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.repeat),
+                    label: const Text('先週と同じ目標'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 16,
+                      ),
+                      backgroundColor: Colors.deepPurple.shade100,
+                      foregroundColor: Colors.deepPurple.shade800,
+                    ),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -225,9 +263,9 @@ class ResultsScreen extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
 
-    // 週ごとの実際に吸った本数を計算
     int weeklySmokedCount = 0;
-    if (questCompletedTimestamp != null) {
+    final storedWeekly = prefs.getInt('weeklySmokedCount');
+    if (questCompletedTimestamp != null && storedWeekly != null) {
       final questDate = DateTime.fromMillisecondsSinceEpoch(
         questCompletedTimestamp,
       );
@@ -238,16 +276,9 @@ class ResultsScreen extends StatelessWidget {
         questDate.day,
       );
       final todayStart = DateTime(today.year, today.month, today.day);
-
-      // 週の範囲内（7日間）の日ごとの本数を合計
       final daysDifference = todayStart.difference(weekStart).inDays;
       if (daysDifference >= 0 && daysDifference < 7) {
-        for (int i = 0; i <= daysDifference; i++) {
-          final date = weekStart.add(Duration(days: i));
-          final dateKey = 'dailyCount_${date.year}_${date.month}_${date.day}';
-          final dayCount = prefs.getInt(dateKey) ?? 0;
-          weeklySmokedCount += dayCount;
-        }
+        weeklySmokedCount = storedWeekly;
       }
     }
 

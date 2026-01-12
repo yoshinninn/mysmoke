@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class QuestScreen extends StatefulWidget {
-  const QuestScreen({super.key});
+  final int? initialCigarettes;
+  final int? initialPrice;
+
+  const QuestScreen({super.key, this.initialCigarettes, this.initialPrice});
 
   @override
   State<QuestScreen> createState() => _QuestScreenState();
@@ -17,8 +20,19 @@ class _QuestScreenState extends State<QuestScreen> {
   @override
   void initState() {
     super.initState();
+    // 初期値が指定されている場合、コントローラーに設定
+    if (widget.initialCigarettes != null) {
+      _cigarettesController.text = widget.initialCigarettes.toString();
+    }
+    if (widget.initialPrice != null) {
+      _priceController.text = widget.initialPrice.toString();
+    }
     _cigarettesController.addListener(_validateInput);
     _priceController.addListener(_validateInput);
+    // 初期値設定後にバリデーションを実行
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _validateInput();
+    });
   }
 
   @override
@@ -38,14 +52,14 @@ class _QuestScreenState extends State<QuestScreen> {
           cigarettesParsed != null &&
           cigarettesParsed > 0 &&
           cigarettesParsed <= 999;
-      
+
       final priceParsed = int.tryParse(priceText);
       final priceValid =
           priceText.isNotEmpty &&
           priceParsed != null &&
           priceParsed > 0 &&
           priceParsed <= 9999;
-      
+
       _isButtonEnabled = cigarettesValid && priceValid;
     });
   }
@@ -62,7 +76,7 @@ class _QuestScreenState extends State<QuestScreen> {
               const Icon(Icons.assignment, size: 80, color: Colors.deepPurple),
               const SizedBox(height: 20),
               const Text(
-                '今週吸う本数を入力してください',
+                '今週の目標を入力してください',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
@@ -73,10 +87,10 @@ class _QuestScreenState extends State<QuestScreen> {
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(3),
-                  _MaxValueFormatter(maxValue: 999),
+                  _MaxValueFormatter(maxValue: 99),
                 ],
                 decoration: const InputDecoration(
-                  labelText: '本数（最大999）',
+                  labelText: '喫煙本数',
                   hintText: '例: 10',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.smoking_rooms),
@@ -92,10 +106,10 @@ class _QuestScreenState extends State<QuestScreen> {
                   _MaxValueFormatter(maxValue: 9999),
                 ],
                 decoration: const InputDecoration(
-                  labelText: '一箱の値段（最大9999）',
+                  labelText: '一箱の値段',
                   hintText: '例: 600',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.attach_money),
+                  prefixIcon: Icon(Icons.currency_yen),
                 ),
               ),
               const SizedBox(height: 40),
@@ -125,6 +139,8 @@ class _QuestScreenState extends State<QuestScreen> {
     final prefs = await SharedPreferences.getInstance();
     final cigarettes = int.parse(_cigarettesController.text.trim());
     final price = int.parse(_priceController.text.trim());
+    final now = DateTime.now();
+    final todayKey = 'dailyCount_${now.year}_${now.month}_${now.day}';
 
     // 本数と金額を別々のキーで保存
     await prefs.setInt('weeklyCigarettes', cigarettes);
@@ -135,6 +151,10 @@ class _QuestScreenState extends State<QuestScreen> {
       'questCompletedTimestamp',
       DateTime.now().millisecondsSinceEpoch,
     );
+
+    // 新しい週のスタートとしてカウンターをリセット
+    await prefs.setInt('weeklySmokedCount', 0);
+    await prefs.setInt(todayKey, 0);
   }
 }
 

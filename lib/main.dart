@@ -37,6 +37,7 @@ class _AppInitializerState extends State<AppInitializer> {
   bool _isLoading = true;
   bool _shouldShowQuest = false;
   bool _shouldShowResults = false;
+  bool _isMonday = false;
 
   @override
   void initState() {
@@ -50,10 +51,12 @@ class _AppInitializerState extends State<AppInitializer> {
     final cigarettePrice = prefs.getInt('cigarettePrice');
     final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
     final lastQuestShownTimestamp = prefs.getInt('lastQuestScreenShown');
+    final lastMondayQuestShownTimestamp = prefs.getInt('lastMondayQuestShown');
     final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
 
     bool shouldShowQuest = false;
     bool shouldShowResults = false;
+    final now = DateTime.now();
 
     // 本数と金額が入力されていない場合は、必ずQuestScreenを表示
     if (weeklyCigarettes == null || cigarettePrice == null) {
@@ -64,34 +67,69 @@ class _AppInitializerState extends State<AppInitializer> {
       }
       await prefs.setInt(
         'lastQuestScreenShown',
-        DateTime.now().millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
       );
+      // 月曜日の場合、月曜日の表示日も記録
+      if (now.weekday == 1) {
+        await prefs.setInt(
+          'lastMondayQuestShown',
+          now.millisecondsSinceEpoch,
+        );
+      }
     } else if (isFirstLaunch) {
       // 初回起動の場合
       shouldShowQuest = true;
       await prefs.setBool('isFirstLaunch', false);
       await prefs.setInt(
         'lastQuestScreenShown',
-        DateTime.now().millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
       );
-    } else if (lastQuestShownTimestamp != null) {
-      // 最後に表示されてからの経過時間をチェック
-      final lastShown = DateTime.fromMillisecondsSinceEpoch(
-        lastQuestShownTimestamp,
-      );
-      final now = DateTime.now();
-      final difference = now.difference(lastShown);
-
-      // 1週間（7日）経過している場合
-      if (difference.inDays >= 7) {
-        shouldShowQuest = true;
-        await prefs.setInt('lastQuestScreenShown', now.millisecondsSinceEpoch);
+      // 月曜日の場合、月曜日の表示日も記録
+      if (now.weekday == 1) {
+        await prefs.setInt(
+          'lastMondayQuestShown',
+          now.millisecondsSinceEpoch,
+        );
+      }
+    } else {
+      // 月曜日の判定
+      final isMonday = now.weekday == 1;
+      if (isMonday) {
+        if (lastMondayQuestShownTimestamp == null) {
+          // まだ一度も月曜日に表示していない場合
+          shouldShowQuest = true;
+        } else {
+          // 前回の月曜日表示日を取得
+          final lastMondayShown = DateTime.fromMillisecondsSinceEpoch(
+            lastMondayQuestShownTimestamp,
+          );
+          // 前回の月曜日表示日と今日が異なる月曜日かチェック
+          final lastMondayDate = DateTime(
+            lastMondayShown.year,
+            lastMondayShown.month,
+            lastMondayShown.day,
+          );
+          final todayDate = DateTime(now.year, now.month, now.day);
+          
+          if (todayDate.isAfter(lastMondayDate)) {
+            // 新しい月曜日の場合
+            shouldShowQuest = true;
+          }
+        }
       }
     }
 
+    setState(() {
+      _shouldShowQuest = shouldShowQuest;
+      _shouldShowResults = shouldShowResults;
+      _isMonday = now.weekday == 1 && shouldShowQuest;
+      _isLoading = false;
+    });
+
     // ResultsScreenの表示チェック（QuestScreenよりも優先度が低い）
     // QuestScreenを表示する必要がない場合のみチェック
-    if (!shouldShowQuest && questCompletedTimestamp != null) {
+    // 初回起動時はResultsScreenを表示しない
+    if (!shouldShowQuest && questCompletedTimestamp != null && !isFirstLaunch) {
       final completedDate = DateTime.fromMillisecondsSinceEpoch(
         questCompletedTimestamp,
       );
@@ -128,11 +166,6 @@ class _AppInitializerState extends State<AppInitializer> {
       }
     }
 
-    setState(() {
-      _shouldShowQuest = shouldShowQuest;
-      _shouldShowResults = shouldShowResults;
-      _isLoading = false;
-    });
   }
 
   @override
@@ -143,17 +176,31 @@ class _AppInitializerState extends State<AppInitializer> {
 
     // QuestScreen を表示する必要がある場合（最優先）
     if (_shouldShowQuest) {
-      // QuestScreen を表示し、閉じられたら MainScreen に遷移
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context)
-            .push(MaterialPageRoute(builder: (context) => const QuestScreen()))
-            .then((_) {
-              // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
-              if (mounted) {
-                _checkAndShowResultsScreen();
-              }
-            });
-      });
+      // 月曜日の場合は、まずRecordScreenを表示し、その後QuestScreenを表示
+      if (_isMonday) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (context) => const RecordScreen()))
+              .then((_) {
+                // RecordScreen が閉じられたら、QuestScreen を表示
+                if (mounted) {
+                  _showQuestScreenAfterRecord();
+                }
+              });
+        });
+      } else {
+        // 月曜日以外の場合は、直接QuestScreenを表示
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (context) => const QuestScreen()))
+              .then((_) {
+                // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
+                if (mounted) {
+                  _checkAndShowResultsScreen();
+                }
+              });
+        });
+      }
       // 一時的にローディング画面を表示
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -182,12 +229,43 @@ class _AppInitializerState extends State<AppInitializer> {
     return const MainScreen();
   }
 
+  Future<void> _showQuestScreenAfterRecord() async {
+    // RecordScreenが閉じられた後、QuestScreenを表示
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    
+    // 月曜日の表示日を記録
+    await prefs.setInt(
+      'lastMondayQuestShown',
+      now.millisecondsSinceEpoch,
+    );
+    await prefs.setInt(
+      'lastQuestScreenShown',
+      now.millisecondsSinceEpoch,
+    );
+
+    if (mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (context) => const QuestScreen()))
+          .then((_) {
+            // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
+            if (mounted) {
+              _checkAndShowResultsScreen();
+            }
+          });
+    }
+  }
+
   Future<void> _checkAndShowResultsScreen() async {
     // QuestScreenが閉じられた後、ResultsScreenを表示する必要があるかチェック
     final prefs = await SharedPreferences.getInstance();
     final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
+    // 初回起動時はResultsScreenを表示しない（isFirstLaunchは既にfalseになっているので、
+    // 代わりにquestCompletedTimestampがnullかどうかで初回起動を判定）
+    // または、初回起動フラグがまだtrueの場合は表示しない
+    final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
 
-    if (questCompletedTimestamp != null) {
+    if (questCompletedTimestamp != null && !isFirstLaunch) {
       final completedDate = DateTime.fromMillisecondsSinceEpoch(
         questCompletedTimestamp,
       );

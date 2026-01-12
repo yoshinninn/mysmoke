@@ -38,6 +38,7 @@ class _AppInitializerState extends State<AppInitializer> {
   bool _shouldShowQuest = false;
   bool _shouldShowResults = false;
   bool _isMonday = false;
+  bool _shouldShowResultsBeforeQuest = false;
 
   @override
   void initState() {
@@ -56,7 +57,71 @@ class _AppInitializerState extends State<AppInitializer> {
 
     bool shouldShowQuest = false;
     bool shouldShowResults = false;
+    bool shouldShowResultsBeforeQuest = false;
     final now = DateTime.now();
+
+    // 月曜日の判定
+    final isMonday = now.weekday == 1;
+
+    // 月曜日で新しい週の場合、前週の結果を表示するかチェック
+    if (isMonday && questCompletedTimestamp != null && !isFirstLaunch) {
+      final lastMondayQuestShownTimestamp = prefs.getInt('lastMondayQuestShown');
+      bool isNewMonday = false;
+      
+      if (lastMondayQuestShownTimestamp == null) {
+        // まだ一度も月曜日に表示していない場合
+        isNewMonday = false; // 初回の月曜日なので結果は表示しない
+      } else {
+        // 前回の月曜日表示日を取得
+        final lastMondayShown = DateTime.fromMillisecondsSinceEpoch(
+          lastMondayQuestShownTimestamp,
+        );
+        final lastMondayDate = DateTime(
+          lastMondayShown.year,
+          lastMondayShown.month,
+          lastMondayShown.day,
+        );
+        final todayDate = DateTime(now.year, now.month, now.day);
+        
+        if (todayDate.isAfter(lastMondayDate)) {
+          // 新しい月曜日の場合
+          isNewMonday = true;
+        }
+      }
+      
+      // 新しい月曜日で、前週の結果がまだ表示されていない場合
+      if (isNewMonday) {
+        final completedDate = DateTime.fromMillisecondsSinceEpoch(
+          questCompletedTimestamp,
+        );
+        final difference = now.difference(completedDate);
+        
+        // 前回のQuestScreen入力から1週間以上経過している場合
+        if (difference.inDays >= 7) {
+          final lastResultsShownBeforeQuest = prefs.getInt('lastResultsShownBeforeQuest');
+          if (lastResultsShownBeforeQuest == null) {
+            // まだ一度も月曜日の前に結果を表示していない場合
+            shouldShowResultsBeforeQuest = true;
+          } else {
+            // 前回の月曜日の結果表示日を取得
+            final lastShown = DateTime.fromMillisecondsSinceEpoch(
+              lastResultsShownBeforeQuest,
+            );
+            final lastShownDate = DateTime(
+              lastShown.year,
+              lastShown.month,
+              lastShown.day,
+            );
+            final todayDate = DateTime(now.year, now.month, now.day);
+            
+            // 前回の表示が今日より前の場合、再度表示
+            if (todayDate.isAfter(lastShownDate)) {
+              shouldShowResultsBeforeQuest = true;
+            }
+          }
+        }
+      }
+    }
 
     // 本数と金額が入力されていない場合は、必ずQuestScreenを表示
     if (weeklyCigarettes == null || cigarettePrice == null) {
@@ -92,8 +157,7 @@ class _AppInitializerState extends State<AppInitializer> {
         );
       }
     } else {
-      // 月曜日の判定
-      final isMonday = now.weekday == 1;
+      // 月曜日の判定（既にisMondayは定義済み）
       if (isMonday) {
         if (lastMondayQuestShownTimestamp == null) {
           // まだ一度も月曜日に表示していない場合
@@ -119,10 +183,16 @@ class _AppInitializerState extends State<AppInitializer> {
       }
     }
 
+    // 月曜日に前週の結果を表示する場合、QuestScreenも表示する必要がある
+    if (shouldShowResultsBeforeQuest && isMonday) {
+      shouldShowQuest = true;
+    }
+
     setState(() {
       _shouldShowQuest = shouldShowQuest;
       _shouldShowResults = shouldShowResults;
-      _isMonday = now.weekday == 1 && shouldShowQuest;
+      _shouldShowResultsBeforeQuest = shouldShowResultsBeforeQuest;
+      _isMonday = isMonday && shouldShowQuest;
       _isLoading = false;
     });
 
@@ -174,33 +244,41 @@ class _AppInitializerState extends State<AppInitializer> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // QuestScreen を表示する必要がある場合（最優先）
+    // 月曜日に前週の結果を表示する必要がある場合（最優先）
+    if (_shouldShowResultsBeforeQuest && _isMonday) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(builder: (context) => const ResultsScreen()),
+            )
+            .then((_) {
+              // ResultsScreen が閉じられたら、RecordScreen → QuestScreen の順で表示
+              if (mounted) {
+                _showRecordAndQuestAfterResults();
+              }
+            });
+      });
+      // 一時的にローディング画面を表示
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // QuestScreen を表示する必要がある場合
     if (_shouldShowQuest) {
-      // 月曜日の場合は、まずRecordScreenを表示し、その後QuestScreenを表示
-      if (_isMonday) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (context) => const RecordScreen()))
-              .then((_) {
-                // RecordScreen が閉じられたら、QuestScreen を表示
-                if (mounted) {
-                  _showQuestScreenAfterRecord();
+      // QuestScreenを直接表示（RecordScreenは自動表示しない）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (context) => const QuestScreen()))
+            .then((_) {
+              // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
+              if (mounted) {
+                if (_isMonday) {
+                  // 月曜日の場合は、表示日を記録
+                  _recordMondayQuestShown();
                 }
-              });
-        });
-      } else {
-        // 月曜日以外の場合は、直接QuestScreenを表示
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (context) => const QuestScreen()))
-              .then((_) {
-                // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
-                if (mounted) {
-                  _checkAndShowResultsScreen();
-                }
-              });
-        });
-      }
+                _checkAndShowResultsScreen();
+              }
+            });
+      });
       // 一時的にローディング画面を表示
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -229,18 +307,14 @@ class _AppInitializerState extends State<AppInitializer> {
     return const MainScreen();
   }
 
-  Future<void> _showQuestScreenAfterRecord() async {
-    // RecordScreenが閉じられた後、QuestScreenを表示
+  Future<void> _showRecordAndQuestAfterResults() async {
+    // ResultsScreenが閉じられた後、QuestScreenを直接表示（RecordScreenは自動表示しない）
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     
-    // 月曜日の表示日を記録
+    // 月曜日の結果表示日を記録
     await prefs.setInt(
-      'lastMondayQuestShown',
-      now.millisecondsSinceEpoch,
-    );
-    await prefs.setInt(
-      'lastQuestScreenShown',
+      'lastResultsShownBeforeQuest',
       now.millisecondsSinceEpoch,
     );
 
@@ -250,10 +324,27 @@ class _AppInitializerState extends State<AppInitializer> {
           .then((_) {
             // QuestScreen が閉じられたら、ResultsScreenをチェックしてからMainScreenに遷移
             if (mounted) {
+              // 月曜日の場合は、表示日を記録
+              _recordMondayQuestShown();
               _checkAndShowResultsScreen();
             }
           });
     }
+  }
+
+  Future<void> _recordMondayQuestShown() async {
+    // 月曜日の表示日を記録
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    
+    await prefs.setInt(
+      'lastMondayQuestShown',
+      now.millisecondsSinceEpoch,
+    );
+    await prefs.setInt(
+      'lastQuestScreenShown',
+      now.millisecondsSinceEpoch,
+    );
   }
 
   Future<void> _checkAndShowResultsScreen() async {

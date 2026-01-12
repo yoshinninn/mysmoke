@@ -1,11 +1,28 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class RecordScreen extends StatelessWidget {
   const RecordScreen({super.key});
 
-  Future<Map<String, int>> _loadTodayData() async {
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  // 指定された日付から最も近い過去の月曜日を取得
+  DateTime _getLastMonday(DateTime date) {
+    final weekday = date.weekday; // 1=月曜日, 7=日曜日
+    final daysToSubtract = weekday == 1 ? 0 : weekday - 1;
+    return _dateOnly(date.subtract(Duration(days: daysToSubtract)));
+  }
+
+  int _daysInMonth(int year, int month) {
+    final beginningNextMonth =
+        (month == 12) ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
+    return beginningNextMonth.subtract(const Duration(days: 1)).day;
+  }
+
+  Future<Map<String, dynamic>> _loadTodayData() async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final todayKey = 'dailyCount_${now.year}_${now.month}_${now.day}';
@@ -16,10 +33,29 @@ class RecordScreen extends StatelessWidget {
     // 1箱20本換算で今日の出費を計算（小数点は四捨五入）
     final todayCost = ((pricePerPack / 20) * todayCount).round();
 
+    // 月内を1週(最大7日)単位で集計
+    final daysInMonth = _daysInMonth(now.year, now.month);
+    final weekBucketCount = ((daysInMonth - 1) ~/ 7) + 1; // 4〜5週
+    final monthlyWeeklyCounts = List<int>.filled(weekBucketCount, 0);
+    final monthlyWeekLabels = <String>[];
+
+    for (int weekIndex = 0; weekIndex < weekBucketCount; weekIndex++) {
+      final startDay = weekIndex * 7 + 1;
+      final endDay = (startDay + 6) > daysInMonth ? daysInMonth : startDay + 6;
+      monthlyWeekLabels.add('$startDay-${endDay}日');
+
+      for (int day = startDay; day <= endDay; day++) {
+        final key = 'dailyCount_${now.year}_${now.month}_$day';
+        monthlyWeeklyCounts[weekIndex] += prefs.getInt(key) ?? 0;
+      }
+    }
+
     return {
       'todayCount': todayCount,
       'todayCost': todayCost,
       'weeklyCigarettes': weeklyCigarettes,
+      'monthlyWeeklyCounts': monthlyWeeklyCounts,
+      'monthlyWeekLabels': monthlyWeekLabels,
     };
   }
 
@@ -43,7 +79,7 @@ class RecordScreen extends StatelessWidget {
         title: const Text('記録'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: FutureBuilder<Map<String, int>>(
+      body: FutureBuilder<Map<String, dynamic>>(
         future: _loadTodayData(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -53,9 +89,13 @@ class RecordScreen extends StatelessWidget {
             return const Center(child: Text('データの読み込みに失敗しました'));
           }
 
-          final todayCount = snapshot.data!['todayCount'] ?? 0;
-          final todayCost = snapshot.data!['todayCost'] ?? 0;
-          final weeklyCigarettes = snapshot.data!['weeklyCigarettes'] ?? 0;
+          final todayCount = snapshot.data!['todayCount'] as int? ?? 0;
+          final todayCost = snapshot.data!['todayCost'] as int? ?? 0;
+          final weeklyCigarettes = snapshot.data!['weeklyCigarettes'] as int? ?? 0;
+          final monthlyWeeklyCounts =
+              snapshot.data!['monthlyWeeklyCounts'] as List<int>? ?? [];
+          final monthlyWeekLabels =
+              snapshot.data!['monthlyWeekLabels'] as List<String>? ?? [];
 
           // Calculate daily goal (1/7 of weekly goal, rounded up)
           // Show bubble when today's count is greater than or equal to the daily goal.
@@ -166,7 +206,20 @@ class RecordScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '月間 週別グラフ',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildMonthlyBarChart(
+                      monthlyWeeklyCounts,
+                      monthlyWeekLabels,
+                    ),
+                    const SizedBox(height: 24),
                     _buildLungsImage(context, isOverGoal),
                   ],
                 ),
@@ -174,6 +227,122 @@ class RecordScreen extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildMonthlyBarChart(
+    List<int> monthlyWeeklyCounts,
+    List<String> monthlyWeekLabels,
+  ) {
+    if (monthlyWeeklyCounts.isEmpty || monthlyWeekLabels.isEmpty) {
+      return const SizedBox(
+        height: 220,
+        child: Center(child: Text('データがありません')),
+      );
+    }
+
+    final maxCount = monthlyWeeklyCounts.fold<int>(
+      0,
+      (prev, element) => element > prev ? element : prev,
+    );
+    final maxY = math.max(maxCount, 5).toDouble();
+
+    final barGroups = monthlyWeeklyCounts.asMap().entries.map((entry) {
+      final index = entry.key;
+      final value = entry.value.toDouble();
+      return BarChartGroupData(
+        x: index,
+        barRods: [
+          BarChartRodData(
+            toY: value,
+            color: Colors.deepPurple,
+            width: 22,
+            borderRadius: BorderRadius.circular(4),
+            backDrawRodData: BackgroundBarChartRodData(
+              show: true,
+              toY: maxY,
+              color: Colors.grey[200],
+            ),
+          ),
+        ],
+      );
+    }).toList();
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SizedBox(
+          height: 240,
+          child: BarChart(
+            BarChartData(
+              maxY: maxY,
+              minY: 0,
+              barGroups: barGroups,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: maxY > 20 ? 5 : 2,
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: Colors.grey[300]!,
+                  strokeWidth: 1,
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 38,
+                    getTitlesWidget: (value, meta) {
+                      final idx = value.toInt();
+                      if (idx >= 0 && idx < monthlyWeekLabels.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            monthlyWeekLabels[idx],
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    interval: maxY > 20 ? 5 : 2,
+                    getTitlesWidget: (value, meta) => Text(
+                      value.toInt().toString(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(
+                show: true,
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              barTouchData: BarTouchData(enabled: true),
+            ),
+          ),
+        ),
       ),
     );
   }

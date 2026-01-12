@@ -50,10 +50,12 @@ class _AppInitializerState extends State<AppInitializer> {
     final cigarettePrice = prefs.getInt('cigarettePrice');
     final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
     final lastQuestShownTimestamp = prefs.getInt('lastQuestScreenShown');
+    final lastMondayQuestShownTimestamp = prefs.getInt('lastMondayQuestShown');
     final questCompletedTimestamp = prefs.getInt('questCompletedTimestamp');
 
     bool shouldShowQuest = false;
     bool shouldShowResults = false;
+    final now = DateTime.now();
 
     // 本数と金額が入力されていない場合は、必ずQuestScreenを表示
     if (weeklyCigarettes == null || cigarettePrice == null) {
@@ -64,28 +66,71 @@ class _AppInitializerState extends State<AppInitializer> {
       }
       await prefs.setInt(
         'lastQuestScreenShown',
-        DateTime.now().millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
       );
+      // 月曜日の場合、月曜日の表示日も記録
+      if (now.weekday == 1) {
+        await prefs.setInt(
+          'lastMondayQuestShown',
+          now.millisecondsSinceEpoch,
+        );
+      }
     } else if (isFirstLaunch) {
       // 初回起動の場合
       shouldShowQuest = true;
       await prefs.setBool('isFirstLaunch', false);
       await prefs.setInt(
         'lastQuestScreenShown',
-        DateTime.now().millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
       );
-    } else if (lastQuestShownTimestamp != null) {
-      // 最後に表示されてからの経過時間をチェック
-      final lastShown = DateTime.fromMillisecondsSinceEpoch(
-        lastQuestShownTimestamp,
-      );
-      final now = DateTime.now();
-      final difference = now.difference(lastShown);
-
-      // 1週間（7日）経過している場合
-      if (difference.inDays >= 7) {
-        shouldShowQuest = true;
-        await prefs.setInt('lastQuestScreenShown', now.millisecondsSinceEpoch);
+      // 月曜日の場合、月曜日の表示日も記録
+      if (now.weekday == 1) {
+        await prefs.setInt(
+          'lastMondayQuestShown',
+          now.millisecondsSinceEpoch,
+        );
+      }
+    } else {
+      // 月曜日の判定
+      final isMonday = now.weekday == 1;
+      if (isMonday) {
+        if (lastMondayQuestShownTimestamp == null) {
+          // まだ一度も月曜日に表示していない場合
+          shouldShowQuest = true;
+          await prefs.setInt(
+            'lastMondayQuestShown',
+            now.millisecondsSinceEpoch,
+          );
+          await prefs.setInt(
+            'lastQuestScreenShown',
+            now.millisecondsSinceEpoch,
+          );
+        } else {
+          // 前回の月曜日表示日を取得
+          final lastMondayShown = DateTime.fromMillisecondsSinceEpoch(
+            lastMondayQuestShownTimestamp,
+          );
+          // 前回の月曜日表示日と今日が異なる月曜日かチェック
+          final lastMondayDate = DateTime(
+            lastMondayShown.year,
+            lastMondayShown.month,
+            lastMondayShown.day,
+          );
+          final todayDate = DateTime(now.year, now.month, now.day);
+          
+          if (todayDate.isAfter(lastMondayDate)) {
+            // 新しい月曜日の場合
+            shouldShowQuest = true;
+            await prefs.setInt(
+              'lastMondayQuestShown',
+              now.millisecondsSinceEpoch,
+            );
+            await prefs.setInt(
+              'lastQuestScreenShown',
+              now.millisecondsSinceEpoch,
+            );
+          }
+        }
       }
     }
 

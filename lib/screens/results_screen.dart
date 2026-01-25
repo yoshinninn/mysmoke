@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'quest_screen.dart';
+import 'record_screen.dart';
 
 class ResultsScreen extends StatelessWidget {
   const ResultsScreen({super.key});
@@ -44,12 +45,29 @@ class ResultsScreen extends StatelessWidget {
                 '${inputDate.year}年${inputDate.month}月${inputDate.day}日';
           }
 
+          // choose small asset for top-right display based on weekly counts
+          String _smallAsset = 'assets/hai_1.png';
+          if (weeklyCigarettes > 0) {
+            final third = weeklyCigarettes / 3.0;
+            if (weeklySmokedCount > weeklyCigarettes) {
+              _smallAsset = 'assets/hai_4.png';
+            } else if (weeklySmokedCount >= 2 * third) {
+              _smallAsset = 'assets/hai_3.png';
+            } else if (weeklySmokedCount >= third) {
+              _smallAsset = 'assets/hai_2.png';
+            } else {
+              _smallAsset = 'assets/hai_1.png';
+            }
+          }
+
           return SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
+              child: Stack(
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
                   const SizedBox(height: 20),
                   const Icon(
                     Icons.assessment,
@@ -165,6 +183,21 @@ class ResultsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
+                ],
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: SplitSequenceImage(
+                        asset: _smallAsset,
+                        size: 80,
+                        interval: const Duration(milliseconds: 140),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

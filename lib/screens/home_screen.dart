@@ -248,22 +248,6 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text('ホーム', style: TextStyle(color: Colors.black)),
-        leading: IconButton(
-          //結果画面への遷移
-          icon: const Icon(Icons.assessment),
-          onPressed: () {
-            Navigator.of(context)
-                .push(
-                  MaterialPageRoute(
-                    builder: (context) => const ResultsScreen(),
-                  ),
-                )
-                .then((_) {
-                  _loadCount();
-                });
-          },
-          tooltip: '結果画面',
-        ), //結果画面への遷移
       ),
 
       body: SafeArea(

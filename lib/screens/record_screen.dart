@@ -128,11 +128,6 @@ class RecordScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
-                    const Icon(
-                      Icons.article,
-                      size: 80,
-                      color: Colors.deepPurple,
-                    ),
                     const SizedBox(height: 24),
                     const Text(
                       '今日の記録',
@@ -357,7 +352,7 @@ class RecordScreen extends StatelessWidget {
     final imageHeight = math.min(screenHeight * 0.60, 520.0);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40.0),
+      padding: const EdgeInsets.only(top: 20.0, bottom: 40.0),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -431,6 +426,16 @@ class _SplitSequenceImagePainterState extends State<SplitSequenceImage> {
     _loadImage();
     // start timer after a short delay to avoid racing before image load
     // Timer will be started inside _loadImage on success; if load fails we still start it
+  }
+
+  @override
+  void didUpdateWidget(covariant SplitSequenceImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.asset != widget.asset) {
+      _image?.dispose();
+      _image = null;
+      _loadImage();
+    }
   }
 
   Future<void> _loadImage() async {
@@ -512,7 +517,7 @@ class _QuadPainter extends CustomPainter {
     final srcH = imgH;
 
     // shrink slightly to avoid neighboring bleed
-    const shrinkFactor = 0.88;
+    const shrinkFactor = 1.0;
     final innerW = srcW * shrinkFactor;
     final innerH = srcH * shrinkFactor;
     final offsetX = index * srcW + (srcW - innerW) / 2.0;
